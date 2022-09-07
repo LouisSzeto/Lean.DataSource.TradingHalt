@@ -14,34 +14,25 @@
 from AlgorithmImports import *
 
 ### <summary>
-### Example algorithm using the custom data type as a source of alpha
+### Example algorithm using the trading halt data
 ### </summary>
-class CustomDataAlgorithm(QCAlgorithm):
+class TradingHaltDataAlgorithm(QCAlgorithm):
     def Initialize(self):
         ''' Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.'''
         
-        self.SetStartDate(2020, 10, 7)   #Set Start Date
-        self.SetEndDate(2020, 10, 11)    #Set End Date
-        self.equity_symbol = self.AddEquity("SPY", Resolution.Daily).Symbol
-        self.custom_data_symbol = self.AddData(MyCustomDataType, self.equity_symbol).Symbol
+        self.SetStartDate(2021, 9, 6)   #Set Start Date
+        self.SetEndDate(2021, 9, 9)    #Set End Date
+        
+        self.adap = self.AddEquity("ADAP", Resolution.Second).Symbol
+        self.eftr = self.AddEquity("EFTR", Resolution.Second).Symbol
+        self.AddData(TradingHalt, self.adap, Resolution.Second)
+        self.AddData(TradingHalt, self.eftr, Resolution.Second)
 
     def OnData(self, slice):
         ''' OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
 
         :param Slice slice: Slice object keyed by symbol containing the stock data
         '''
-        data = slice.Get(MyCustomDataType)
-        if data:
-            custom_data = data[self.custom_data_symbol]
-            if custom_data.SomeCustomProperty == "buy":
-                self.SetHoldings(self.equitySymbol, 1)
-            elif custom_data.SomeCustomProperty == "sell":
-                self.SetHoldings(self.equitySymbol, -1)
-
-    def OnOrderEvent(self, orderEvent):
-        ''' Order fill event handler. On an order fill update the resulting information is passed to this method.
-
-        :param OrderEvent orderEvent: Order event details containing details of the events
-        '''
-        if orderEvent.Status == OrderStatus.Fill:
-            self.Debug(f'Purchased Stock: {orderEvent.Symbol}')
+        data = slice.Get(TradingHalt).Values
+        for halt in data:
+            self.Log(halt.ToString())

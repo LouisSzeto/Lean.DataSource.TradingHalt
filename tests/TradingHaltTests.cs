@@ -15,19 +15,18 @@
 */
 
 using System;
-using ProtoBuf;
-using System.IO;
+using System.Collections.Generic;
 using System.Linq;
-using ProtoBuf.Meta;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using QuantConnect.Data;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.DataSource;
 
 namespace QuantConnect.DataLibrary.Tests
 {
     [TestFixture]
-    public class MyCustomDataTypeTests
+    public class TradingHaltTests
     {
         [Test]
         public void JsonRoundTrip()
@@ -41,30 +40,20 @@ namespace QuantConnect.DataLibrary.Tests
         }
 
         [Test]
-        public void ProtobufRoundTrip()
-        {
-            var expected = CreateNewInstance();
-            var type = expected.GetType();
-
-            RuntimeTypeModel.Default[typeof(BaseData)].AddSubType(2000, type);
-
-            using (var stream = new MemoryStream())
-            {
-                Serializer.Serialize(stream, expected);
-
-                stream.Position = 0;
-
-                var result = Serializer.Deserialize(type, stream);
-
-                AssertAreEqual(expected, result, filterByCustomAttributes: true);
-            }
-        }
-
-        [Test]
         public void Clone()
         {
             var expected = CreateNewInstance();
             var result = expected.Clone();
+
+            AssertAreEqual(expected, result);
+        }
+
+        [Test]
+        public void ReaderTest()
+        {
+            var expected = CreateNewCollectionInstance();
+            var factory = new TradingHalt();
+            var result = factory.Reader(null, " ,,1,20200101 10:31:02,20200102 14:32:56", DateTime.Now, false);
 
             AssertAreEqual(expected, result);
         }
@@ -87,13 +76,60 @@ namespace QuantConnect.DataLibrary.Tests
 
         private BaseData CreateNewInstance()
         {
-            return new MyCustomDataType
+            return new TradingHalt
             {
                 Symbol = Symbol.Empty,
                 Time = DateTime.Today,
-                DataType = MarketDataType.Base,
-                SomeCustomProperty = "This is some market related information"
+                EndTime = DateTime.Today,
+                Reason = HaltReason.NewsReleased,
+                Flag = HaltFlag.Start
             };
+        }
+
+        private BaseDataCollection CreateNewCollectionInstance()
+        {
+            var haltStart = Parse.DateTimeExact("20200101 10:31:02", "yyyyMMdd HH:mm:ss");
+            var haltEnd = Parse.DateTimeExact("20200102 14:32:56", "yyyyMMdd HH:mm:ss");
+            var symbol = Symbol.Empty;
+            var reason = HaltReason.LULDPause;
+
+            var data = new List<TradingHalt>
+            {
+                new TradingHalt
+                {
+                    Symbol = symbol,
+                    Flag = HaltFlag.Start,
+                    Reason = reason,
+                    Time = haltStart,
+                    EndTime = haltStart
+                },
+                new TradingHalt
+                {
+                    Symbol = symbol,
+                    Flag = HaltFlag.End,
+                    Reason = reason,
+                    Time = haltStart,
+                    EndTime = new DateTime(2020, 1, 1, 20, 0, 0)
+                },
+                new TradingHalt
+                {
+                    Symbol = symbol,
+                    Flag = HaltFlag.Start,
+                    Reason = reason,
+                    Time = new DateTime(2020, 1, 2, 4, 0, 0),
+                    EndTime = new DateTime(2020, 1, 2, 4, 0, 0)
+                },
+                new TradingHalt
+                {
+                    Symbol = symbol,
+                    Flag = HaltFlag.Start,
+                    Reason = reason,
+                    Time = new DateTime(2020, 1, 2, 4, 0, 0),
+                    EndTime = haltEnd
+                },
+            };
+
+            return new BaseDataCollection(haltStart, haltEnd, symbol, data);
         }
     }
 }

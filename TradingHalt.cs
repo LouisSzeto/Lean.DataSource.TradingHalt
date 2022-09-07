@@ -15,40 +15,28 @@
 */
 
 using System;
-using NodaTime;
-using ProtoBuf;
-using System.IO;
-using QuantConnect.Data;
 using System.Collections.Generic;
-using System.Globalization;
+using System.IO;
+using NodaTime;
+using QuantConnect.Data;
+using QuantConnect.Data.UniverseSelection;
 
 namespace QuantConnect.DataSource
 {
     /// <summary>
     /// Example custom data type
     /// </summary>
-    [ProtoContract(SkipConstructor = true)]
-    public class MyCustomDataUniverseType : BaseData
+    public class TradingHalt : BaseData
     {
         /// <summary>
-        /// Some custom data property
+        /// Reason of trading halt
         /// </summary>
-        public string SomeCustomProperty { get; set; } 
+        public HaltReason Reason { get; set; }
 
         /// <summary>
-        /// Some custom data property
+        /// Signal flag of trading halt
         /// </summary>
-        public decimal SomeNumericProperty { get; set; }
-
-        /// <summary>
-        /// Time passed between the date of the data and the time the data became available to us
-        /// </summary>
-        public TimeSpan Period { get; set; } = TimeSpan.FromDays(1);
-
-        /// <summary>
-        /// Time the data became available
-        /// </summary>
-        public override DateTime EndTime => Time + Period;
+        public HaltFlag Flag { get; set; }
 
         /// <summary>
         /// Return the URL string source of the file. This will be converted to a stream
@@ -62,12 +50,13 @@ namespace QuantConnect.DataSource
             return new SubscriptionDataSource(
                 Path.Combine(
                     Globals.DataFolder,
-                    "alternative",
-                    "mycustomdatatype",
-                    "universe",
-                    $"{date.ToStringInvariant(DateFormat.EightCharacter)}.csv"
+                    "equity",
+                    "usa",
+                    "halt",
+                    $"{config.Symbol.Value.ToLowerInvariant()}.csv"
                 ),
-                SubscriptionTransportMedium.LocalFile
+                SubscriptionTransportMedium.LocalFile,
+                FileFormat.UnfoldingCollection
             );
         }
 
@@ -81,18 +70,58 @@ namespace QuantConnect.DataSource
         /// <returns>New instance</returns>
         public override BaseData Reader(SubscriptionDataConfig config, string line, DateTime date, bool isLiveMode)
         {
-            var csv = line.Split(','); 
+            var csv = line.Split(',');
 
-            var someNumericProperty = decimal.Parse(csv[2], NumberStyles.Any, CultureInfo.InvariantCulture); 
+            var symbol = new Symbol(SecurityIdentifier.Parse(csv[0]), csv[1]);
+            var reason = (HaltReason)Enum.Parse(typeof(HaltReason), csv[2], true);
+            var haltStart = Parse.DateTimeExact(csv[3], "yyyyMMdd HH:mm:ss");
+            var haltEnd = string.IsNullOrEmpty(csv[4]) ? DateTime.Now : Parse.DateTimeExact(csv[4], "yyyyMMdd HH:mm:ss");
 
-            return new MyCustomDataUniverseType
+            var data = new List<TradingHalt>();
+            TimeSpan ts = new TimeSpan(4, 0, 0);                // consider pre market hour
+            
+            // provide daily flag so algorithm starts in the middle of cross-date halting can also be notified
+            // e.g. halt from day1 10am to day2 3pm, there will be a total of 4 flags to be emitted:
+            // 1. day1 10am halt start
+            // 2. day1 8pm halt end (day1 post market hour end)
+            // 3. day2 4am halt start (day2 pre market hour start)
+            // 4. day2 4am halt end
+            // So user get notified even if algorithm starts on day2
+            for (DateTime time = haltStart; time < haltEnd; time = time.AddDays(1).Date + ts)
             {
-                Symbol = new Symbol(SecurityIdentifier.Parse(csv[0]), csv[1]),
-                SomeNumericProperty = someNumericProperty,
-                SomeCustomProperty = csv[3],
-                Time =  date - Period,
-                Value = someNumericProperty
-            };
+                // Signal start
+                data.Add(new TradingHalt
+                {
+                    Symbol = symbol,
+                    Flag = HaltFlag.Start,
+                    Reason = reason,
+                    Time = time,
+                    EndTime = time
+                });
+
+                // Signal end
+                data.Add(new TradingHalt
+                {
+                    Symbol = symbol,
+                    Flag = HaltFlag.End,
+                    Reason = reason,
+                    Time = time,
+                    EndTime = time.Date == haltEnd.Date ?
+                        haltEnd :
+                        time.Date + new TimeSpan(20, 0, 0)      // consider post market hour
+                });
+            }
+
+            return new BaseDataCollection(haltStart, haltEnd, symbol, data);
+        }
+
+        /// <summary>
+        /// Indicates whether the data source is tied to an underlying symbol and requires that corporate events be applied to it as well, such as renames and delistings
+        /// </summary>
+        /// <returns>false</returns>
+        public override bool RequiresMapping()
+        {
+            return true;
         }
 
         /// <summary>
@@ -110,7 +139,7 @@ namespace QuantConnect.DataSource
         /// </summary>
         public override string ToString()
         {
-            return $"{Symbol} - {Value}";
+            return $"{Symbol} - {EndTime} - {Flag} - {Reason}";
         }
 
         /// <summary>
@@ -118,7 +147,7 @@ namespace QuantConnect.DataSource
         /// </summary>
         public override Resolution DefaultResolution()
         {
-            return Resolution.Daily;
+            return Resolution.Second;
         }
 
         /// <summary>
@@ -126,7 +155,7 @@ namespace QuantConnect.DataSource
         /// </summary>
         public override List<Resolution> SupportedResolutions()
         {
-            return DailyResolution;
+            return AllResolutions;
         }
 
         /// <summary>
@@ -135,7 +164,7 @@ namespace QuantConnect.DataSource
         /// <returns>The <see cref="T:NodaTime.DateTimeZone" /> of this data type</returns>
         public override DateTimeZone DataTimeZone()
         {
-            return DateTimeZone.Utc;
+            return TimeZones.NewYork;
         }
     }
 }
