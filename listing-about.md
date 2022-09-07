@@ -1,7 +1,7 @@
 ### Meta
-- **Dataset name**: *`datasetName`*
-- **Vendor name**: *`vendorName`*
-- **Vendor Website**: *`vendorWebsite`*
+- **Dataset name**: TradingHalt
+- **Vendor name**: NYSE
+- **Vendor Website**: https://www.nyse.com/index
 
 
 ### Introduction

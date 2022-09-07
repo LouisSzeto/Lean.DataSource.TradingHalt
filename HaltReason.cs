@@ -11,25 +11,31 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
 */
 
-using System;
-
-namespace QuantConnect.DataProcessing
+namespace QuantConnect.DataSource
 {
     /// <summary>
-    /// Entrypoint for the data downloader/converter
+    /// Reason of trading halt
     /// </summary>
-    public class Program
+    /// <remarks></remarks>
+    public enum HaltReason
     {
-        /// <summary>
-        /// Entrypoint of the program
-        /// </summary>
-        /// <returns>Exit code. 0 equals successful, and any other value indicates the downloader/converter failed.</returns>
-        public static void Main()
-        {
-            // The downloader/converter was successful
-            Environment.Exit(0);
-        }
+        CorporateAction,
+
+        LULDPause,
+
+        MergerEffective,
+
+        NewSecurityOffering,
+
+        NewsReleased,
+
+        NewsDissemination,
+
+        NewsPending,
+
+        RegulatoryConcern
     }
 }
